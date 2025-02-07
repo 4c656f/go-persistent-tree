@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type Node[ValueType any] struct {
 	value    []ValueType
 	children []*Node[ValueType]
@@ -157,10 +159,10 @@ func (vec *PersistentVec[ValueType]) pushTailNodeToTree(level uint, parent *Node
 		child := out.children[idx]
 		if child != nil {
 			// we have children, clone it
-			nodeToInser = vec.pushTailNodeToTree(level-5, child, tailNodeToPush)
+			nodeToInser = vec.pushTailNodeToTree(level-vec.bits, child, tailNodeToPush)
 		} else {
 			// we don't have needed branch, create it
-			nodeToInser = vec.newPath(level-5, tailNodeToPush)
+			nodeToInser = vec.newPath(level-vec.bits, tailNodeToPush)
 		}
 	}
 	out.children[idx] = nodeToInser
@@ -179,7 +181,7 @@ func (vec *PersistentVec[ValueType]) newPath(level uint, node *Node[ValueType]) 
 	}
 
 	// we chose always most-left path couse we in a newly created path
-	out.children[0] = vec.newPath(level-5, node)
+	out.children[0] = vec.newPath(level-vec.bits, node)
 
 	return out
 }
@@ -206,4 +208,28 @@ func (vec *PersistentVec[ValueType]) ToGenericVec() []ValueType {
 	}
 
 	return out
+}
+
+func (vec *PersistentVec[ValueType]) PrintTree() {
+	fmt.Println("Tail:", vec.tail.value)
+	printNode(vec.root, 0)
+}
+
+func printNode[ValueType any](node *Node[ValueType], level int) {
+	indent := ""
+	for i := 0; i < level; i++ {
+		indent += "  "
+	}
+
+	if node == nil {
+		fmt.Println(indent + "<nil>")
+		return
+	}
+
+	fmt.Printf(indent+"Node (Level %d, Value: %v) {\n", level, node.value)
+	for i, child := range node.children {
+		fmt.Printf(indent + "  Child %d: ", i)
+		printNode(child, level+1)
+	}
+	fmt.Println(indent + "}")
 }
