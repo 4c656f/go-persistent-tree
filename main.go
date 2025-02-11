@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Node[ValueType any] struct {
 	value    []ValueType
@@ -20,7 +23,8 @@ type PersistentVec[ValueType any] struct {
 func NewPersistentVec[ValueType any](values []ValueType, power uint) *PersistentVec[ValueType] {
 	var width uint = 1 << power
 	tailNode := &Node[ValueType]{
-		value: make([]ValueType, 0, width),
+		value:    make([]ValueType, 0, width),
+		children: make([]*Node[ValueType], width),
 	}
 	rootNode := &Node[ValueType]{
 		children: make([]*Node[ValueType], width),
@@ -30,7 +34,7 @@ func NewPersistentVec[ValueType any](values []ValueType, power uint) *Persistent
 		shift: power,
 		bits:  power,
 		width: width,
-		mask:  (1 << power) - 1,
+		mask:  width - 1,
 		root:  rootNode,
 		tail:  tailNode,
 	}
@@ -60,7 +64,7 @@ func (vec *PersistentVec[ValueType]) Append(value ...ValueType) *PersistentVec[V
 	out := vec
 
 	for _, v := range value {
-
+		out = out.Clone()
 		// we have space in the tail
 		if out.cnt-out.tailOffset() < out.width {
 
@@ -72,15 +76,8 @@ func (vec *PersistentVec[ValueType]) Append(value ...ValueType) *PersistentVec[V
 			// add value to the last avalible index
 			newTailNode.value = append(newTailNode.value, v)
 			// return new instance of persisted vec with new cloned tail node
-			out = &PersistentVec[ValueType]{
-				cnt:   out.cnt + 1,
-				shift: out.shift,
-				bits:  out.bits,
-				width: out.width,
-				mask:  out.mask,
-				root:  out.root,
-				tail:  newTailNode,
-			}
+			out.cnt++
+			out.tail = newTailNode
 			continue
 		}
 		// we need create new tail node
@@ -115,15 +112,10 @@ func (vec *PersistentVec[ValueType]) Append(value ...ValueType) *PersistentVec[V
 			newRoot = out.pushTailNodeToTree(out.shift, out.root, nodeToInsertInTree)
 		}
 		// create new instance of vec with new instance of root and ceated branches
-		out = &PersistentVec[ValueType]{
-			cnt:   out.cnt + 1,
-			bits:  out.bits,
-			width: out.width,
-			shift: newShift,
-			mask:  out.mask,
-			root:  newRoot,
-			tail:  newTailNode,
-		}
+		out.cnt++
+		out.shift = newShift
+		out.root = newRoot
+		out.tail = newTailNode
 	}
 	return out
 }
@@ -186,6 +178,63 @@ func (vec *PersistentVec[ValueType]) newPath(level uint, node *Node[ValueType]) 
 	return out
 }
 
+func (vec *PersistentVec[ValueType]) Set(index uint, value ValueType) *PersistentVec[ValueType] {
+	if index < 0 || index >= vec.cnt {
+		return vec
+	}
+	tailOffset := vec.tailOffset()
+	newVec := vec.Clone()
+	// index that we need to set is in tail
+	if index >= tailOffset {
+		// create new instance of the tail node
+		newTail := vec.tail.Clone(vec)
+		// set index to new value in new instance of the tail
+		//
+		newTail.value[index-tailOffset] = value
+		newVec.tail = newTail
+		return newVec
+	}
+	newRoot, valuesToSet := vec.cloneIdxPath(index)
+	valuesToSet[index&vec.mask] = value
+	newVec.root = newRoot
+	return newVec
+}
+
+func (node *Node[ValueType]) Clone(vec *PersistentVec[ValueType]) *Node[ValueType] {
+	values := make([]ValueType, len(node.value), vec.width)
+	children := make([]*Node[ValueType], vec.width)
+	copy(values, node.value)
+	copy(children, node.children)
+	return &Node[ValueType]{
+		value:    values,
+		children: children,
+	}
+}
+
+func (vec *PersistentVec[ValueType]) Clone() *PersistentVec[ValueType] {
+	return &PersistentVec[ValueType]{
+		cnt:   vec.cnt,
+		shift: vec.shift,
+		bits:  vec.bits,
+		width: vec.width,
+		mask:  vec.mask,
+		root:  vec.root,
+		tail:  vec.tail,
+	}
+}
+
+func (vec *PersistentVec[ValueType]) cloneIdxPath(index uint) (newRoot *Node[ValueType], leafValues []ValueType) {
+	node := vec.root.Clone(vec)
+	newRoot = node
+	for level := vec.shift; level > 0; level -= vec.bits {
+		nxtCloned := node.children[(index>>level)&vec.mask].Clone(vec)
+		node.children[(index>>level)&vec.mask] = nxtCloned
+		node = nxtCloned
+	}
+	leafValues = node.value
+	return
+}
+
 func (vec *PersistentVec[ValueType]) sliceFor(index uint) []ValueType {
 	if index >= vec.tailOffset() {
 		return vec.tail.value
@@ -210,26 +259,27 @@ func (vec *PersistentVec[ValueType]) ToGenericVec() []ValueType {
 	return out
 }
 
-func (vec *PersistentVec[ValueType]) PrintTree() {
-	fmt.Println("Tail:", vec.tail.value)
-	printNode(vec.root, 0)
+func (vec *PersistentVec[ValueType]) String() string {
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Tail: %v\n", vec.tail.value))
+	result.WriteString(nodeToString(vec.root, 0))
+	return result.String()
 }
 
-func printNode[ValueType any](node *Node[ValueType], level int) {
-	indent := ""
-	for i := 0; i < level; i++ {
-		indent += "  "
-	}
+func nodeToString[ValueType any](node *Node[ValueType], level int) string {
+	var result strings.Builder
+	indent := strings.Repeat("  ", level)
 
 	if node == nil {
-		fmt.Println(indent + "<nil>")
-		return
+		return indent + "<nil>\n"
 	}
 
-	fmt.Printf(indent+"Node (Level %d, Value: %v) {\n", level, node.value)
+	result.WriteString(fmt.Sprintf("%sNode (Level %d, Value: %v) {\n", indent, level, node.value))
 	for i, child := range node.children {
-		fmt.Printf(indent + "  Child %d: ", i)
-		printNode(child, level+1)
+		result.WriteString(fmt.Sprintf("%s  Child %d: ", indent, i))
+		result.WriteString(nodeToString(child, level+1))
 	}
-	fmt.Println(indent + "}")
+	result.WriteString(indent + "}\n")
+
+	return result.String()
 }
