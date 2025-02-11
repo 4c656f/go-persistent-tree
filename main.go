@@ -120,13 +120,54 @@ func (vec *PersistentVec[ValueType]) Append(value ...ValueType) *PersistentVec[V
 	return out
 }
 
-func (vec *PersistentVec[ValueType]) pushTailNodeToTree(level uint, parent *Node[ValueType], tailNodeToPush *Node[ValueType]) *Node[ValueType] {
-	// create new instance of node to keep peprsitents
-	out := &Node[ValueType]{
-		children: make([]*Node[ValueType], vec.width),
+func (vec *PersistentVec[ValueType]) Pop() (ValueType, *PersistentVec[ValueType]) {
+	if vec.cnt == 0 {
+		panic("Pop from empty tree")
 	}
-	// clone previus childrens to new instance of node
-	copy(out.children, parent.children)
+	newVec := vec.Clone()
+	//tail contains some values, simply pop from it and create new instance
+	if vec.cnt-vec.tailOffset() > 1 {
+		newTail := vec.tail.Clone(vec)
+		popped := newTail.value[len(newTail.value)-1]
+		newTail.value = newTail.value[:len(newTail.value)-1]
+		newVec.tail = newTail
+		newVec.cnt--
+		return popped, newVec
+	}
+	popped := vec.tail.value[len(vec.tail.value)-1]
+	//tail does not contains items, we need to pop from right most item in a tree and set it as new tail
+	newRoot, newTail := vec.popNodeFromTreeToTail(vec.shift, vec.root)
+	newVec.cnt--
+	newVec.root = newRoot
+	newVec.tail = newTail
+
+	if newVec.shift > vec.bits && newRoot.children[1] == nil {
+		newVec.shift -= vec.bits
+		newVec.root = newVec.root.children[0]
+	}
+
+	return popped, newVec
+}
+
+func (vec *PersistentVec[ValueType]) popNodeFromTreeToTail(level uint, current *Node[ValueType]) (newRoot *Node[ValueType], newTail *Node[ValueType]) {
+	if level == 0 {
+		return nil, current.Clone(vec)
+	}
+
+	idx := ((vec.cnt - 2) >> level) & vec.mask
+	out := current.Clone(vec)
+
+	nxt, tail := vec.popNodeFromTreeToTail(level-vec.bits, current.children[idx])
+	if nxt == nil && idx == 0 {
+		return nil, tail
+	}
+	out.children[idx] = nxt
+	return out, tail
+}
+
+func (vec *PersistentVec[ValueType]) pushTailNodeToTree(level uint, parent *Node[ValueType], tailNodeToPush *Node[ValueType]) *Node[ValueType] {
+	// create new instance of node to keep persitents
+	out := parent.Clone(vec)
 
 	// calculate acces idx of next node
 	// example: cnt = 67
@@ -190,13 +231,11 @@ func (vec *PersistentVec[ValueType]) Set(index uint, value ValueType) *Persisten
 		newTail := vec.tail.Clone(vec)
 		// set index to new value in new instance of the tail
 		//
-		newTail.value[index-tailOffset] = value
+		newTail.value[index&vec.mask] = value
 		newVec.tail = newTail
 		return newVec
 	}
-	newRoot, valuesToSet := vec.cloneIdxPath(index)
-	valuesToSet[index&vec.mask] = value
-	newVec.root = newRoot
+	newVec.root = vec.cloneIdxPath(index, value)
 	return newVec
 }
 
@@ -223,16 +262,16 @@ func (vec *PersistentVec[ValueType]) Clone() *PersistentVec[ValueType] {
 	}
 }
 
-func (vec *PersistentVec[ValueType]) cloneIdxPath(index uint) (newRoot *Node[ValueType], leafValues []ValueType) {
+func (vec *PersistentVec[ValueType]) cloneIdxPath(index uint, value ValueType) *Node[ValueType] {
 	node := vec.root.Clone(vec)
-	newRoot = node
+	newRoot := node
 	for level := vec.shift; level > 0; level -= vec.bits {
 		nxtCloned := node.children[(index>>level)&vec.mask].Clone(vec)
 		node.children[(index>>level)&vec.mask] = nxtCloned
 		node = nxtCloned
 	}
-	leafValues = node.value
-	return
+	node.value[index&vec.mask] = value
+	return newRoot
 }
 
 func (vec *PersistentVec[ValueType]) sliceFor(index uint) []ValueType {
@@ -261,6 +300,8 @@ func (vec *PersistentVec[ValueType]) ToGenericVec() []ValueType {
 
 func (vec *PersistentVec[ValueType]) String() string {
 	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Cnt: %v\n", vec.cnt))
+	result.WriteString(fmt.Sprintf("Shift: %v\n", vec.shift))
 	result.WriteString(fmt.Sprintf("Tail: %v\n", vec.tail.value))
 	result.WriteString(nodeToString(vec.root, 0))
 	return result.String()
