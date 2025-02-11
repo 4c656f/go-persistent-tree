@@ -1,4 +1,4 @@
-*.md filter=lfs diff=markdown
-*.md linguist-detectable=true
-*.md linguist-language=Markdown
-*.md filter=lfs diff=lfs merge=lfs -text
+docs/**/*.md filter=lfs diff=markdown
+docs/**/*.md linguist-detectable=true
+docs/**/*.md linguist-language=Markdown
+docs/**/*.md filter=lfs diff=lfs merge=lfs -text
