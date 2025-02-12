@@ -15,8 +15,8 @@ Here's what's currently implemented:
 | Immutability   | ✅     |
 | Persistence    | ✅     |
 | Generic Types  | ✅     |
-| Deletion       | 🚧     |
-| Iteration      | 🚧     |
+| Deletion       | ✅     |
+| Iteration      | ✅     |
 
 ## Usage
 
@@ -44,6 +44,8 @@ func main() {
 	vec3 := vec2.Set(0, 100)
 	fmt.Println("Vector after set:", vec3.ToGenericVec()) // Output: [100 2 3 4 5 6 7 8]
 	fmt.Println("Vector before set:", vec2.ToGenericVec()) // Output: [1 2 3 4 5 6 7 8] (unchanged)
+	
+	
 }
 ```
 
