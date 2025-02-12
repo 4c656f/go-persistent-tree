@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -91,12 +90,23 @@ func TestMain(t *testing.T) {
 		_, vec = vec.Pop()
 		value, vec := vec.Pop()
 		vecFromTree := vec.ToGenericVec()
-		fmt.Println(vec)
 		if value != 3 {
 			t.Errorf("got %v, want %v", value, 3)
 		}
 		if !reflect.DeepEqual(vecFromTree, []int{1, 2}) {
 			t.Errorf("got %v, want %v", vecFromTree, []int{1, 2})
+		}
+	})
+
+	t.Run("Should restore tree after popping an elems", func(t *testing.T) {
+		vec := NewPersistentVec([]int{1, 2, 3, 4, 5}, 1)
+		_, vec = vec.Pop()
+		_, vec = vec.Pop()
+		_, vec = vec.Pop()
+		vec = vec.Append(1, 2, 3)
+		vecFromTree := vec.ToGenericVec()
+		if !reflect.DeepEqual(vecFromTree, []int{1, 2, 1, 2, 3}) {
+			t.Errorf("got %v, want %v", vecFromTree, []int{1, 2, 1, 2, 3})
 		}
 	})
 }
