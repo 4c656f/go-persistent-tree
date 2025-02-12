@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"iter"
 	"strings"
 )
 
@@ -326,6 +327,21 @@ func (vec *PersistentVec[ValueType]) ToGenericVec() []ValueType {
 	}
 
 	return out
+}
+
+func (vec *PersistentVec[ValueType]) All() iter.Seq2[int, ValueType] {
+	return func(yield func(int, ValueType) bool) {
+		idx := 0
+		for i := uint(0); i < vec.cnt; i += vec.width {
+			curLevelSlice := vec.sliceFor(i)
+			for _, v := range curLevelSlice {
+				if !yield(idx, v) {
+					return
+				}
+				idx++
+			}
+		}
+	}
 }
 
 func (vec *PersistentVec[ValueType]) String() string {

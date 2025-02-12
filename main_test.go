@@ -109,4 +109,21 @@ func TestMain(t *testing.T) {
 			t.Errorf("got %v, want %v", vecFromTree, []int{1, 2, 1, 2, 3})
 		}
 	})
+
+	t.Run("Should correctly impliment iterators", func(t *testing.T) {
+		values := []int{1, 2, 3, 4, 5}
+		vec := NewPersistentVec(values, 1)
+		fromIterIndeses := []int{}
+		fromIter := []int{}
+		for idx, value := range vec.All() {
+			fromIterIndeses = append(fromIterIndeses, idx)
+			fromIter = append(fromIter, value)
+		}
+		if !reflect.DeepEqual(fromIterIndeses, []int{0, 1, 2, 3, 4}) {
+			t.Errorf("got %v, want %v", fromIterIndeses, []int{0, 1, 2, 3, 4})
+		}
+		if !reflect.DeepEqual(fromIter, values) {
+			t.Errorf("got %v, want %v", fromIter, values)
+		}
+	})
 }
